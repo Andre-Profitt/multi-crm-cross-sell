@@ -1,0 +1,57 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+venv/
+env/
+.env
+.env.*
+!.env.example
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# Salesforce
+keys/
+*.pem
+*.key
+.sf_cache/
+
+# Data
+data/raw/
+data/processed/
+*.csv
+*.parquet
+!data/sample/
+
+# Models
+models/*.pkl
+models/*.pth
+!models/.gitkeep
+
+# Logs
+logs/
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Coverage
+.coverage
+.pytest_cache/
+htmlcov/
+
+# Docker
+docker-compose.override.yml
+
+# Kubernetes secrets
+k8s/secret*.yaml
+!k8s/secret.example.yaml
