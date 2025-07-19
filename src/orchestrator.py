@@ -346,7 +346,8 @@ class CrossSellOrchestrator:
         """Generate training data from historical data"""
         # This would pull from your labeled historical data
         # For now, returning None to skip training
-        return None, None
+        # Generate synthetic data for now
+        return self._generate_synthetic_training_data()
     
     async def _generate_recommendations(self, processed_data: Dict[str, Any]) -> pd.DataFrame:
         """Generate cross-sell recommendations"""
@@ -434,3 +435,31 @@ class CrossSellOrchestrator:
             await self.engine.dispose()
         
         logger.info("Orchestrator stopped")
+
+    def _generate_synthetic_training_data(self):
+        """Generate synthetic training data for initial model"""
+        logger.info("Generating synthetic training data for initial model")
+        
+        # Generate 1000 synthetic samples
+        n_samples = 1000
+        n_features = 6  # Match the feature engineering
+        
+        # Create synthetic features
+        X = np.random.rand(n_samples, n_features)
+        
+        # Create labels based on some logic
+        y = []
+        for features in X:
+            score = (
+                features[0] * 0.3 +  # Industry similarity
+                features[1] * 0.25 + # Size compatibility  
+                features[2] * 0.2 +  # Geographic proximity
+                features[3] * 0.15 + # Product complementarity
+                features[4] * 0.05 + # Customer maturity
+                features[5] * 0.05   # Activity alignment
+            )
+            # Add some noise
+            score += np.random.normal(0, 0.1)
+            y.append(1 if score > 0.5 else 0)
+        
+        return X, np.array(y)
