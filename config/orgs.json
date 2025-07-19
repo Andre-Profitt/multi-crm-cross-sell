@@ -1,0 +1,13 @@
+{
+    "organizations": [
+        {
+            "org_id": "org1",
+            "org_name": "Example Company 1",
+            "instance_url": "https://your-instance.my.salesforce.com",
+            "auth_type": "jwt",
+            "client_id": "YOUR_CLIENT_ID",
+            "private_key_path": "keys/org1_private.pem",
+            "username": "integration@company1.com"
+        }
+    ]
+}
