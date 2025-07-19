@@ -1,3 +1,4 @@
+# .github/workflows/ci.yml
 name: CI/CD Pipeline
 
 on:
@@ -5,40 +6,295 @@ on:
     branches: [ main, development ]
   pull_request:
     branches: [ main ]
+  schedule:
+    # Run tests daily at 2 AM UTC
+    - cron: '0 2 * * *'
+
+env:
+  PYTHON_VERSION: '3.9'
+  POETRY_VERSION: '1.6.1'
 
 jobs:
-  test:
+  lint:
+    name: Linting and Code Quality
     runs-on: ubuntu-latest
     
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     
     - name: Set up Python
       uses: actions/setup-python@v4
       with:
-        python-version: '3.9'
+        python-version: ${{ env.PYTHON_VERSION }}
+    
+    - name: Cache pip packages
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('requirements*.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
     
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
+        pip install -r requirements-dev.txt
     
-    - name: Run linting
+    - name: Run black formatting check
       run: |
-        flake8 src/ --max-line-length=100
+        black src/ tests/ --check --line-length=100
     
-    - name: Run tests
+    - name: Run isort import check
       run: |
-        pytest tests/ -v
+        isort src/ tests/ --check-only --profile black
+    
+    - name: Run flake8 linting
+      run: |
+        flake8 src/ tests/ --max-line-length=100 --extend-ignore=E203,W503
+    
+    - name: Run mypy type checking
+      run: |
+        mypy src/ --ignore-missing-imports
+    
+    - name: Run bandit security check
+      run: |
+        bandit -r src/ -ll -f json -o bandit-report.json
+    
+    - name: Upload bandit report
+      if: always()
+      uses: actions/upload-artifact@v3
+      with:
+        name: bandit-security-report
+        path: bandit-report.json
 
-  build:
-    needs: test
+  test:
+    name: Tests - Python ${{ matrix.python-version }}
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
+    strategy:
+      matrix:
+        python-version: ['3.8', '3.9', '3.10']
+    
+    services:
+      postgres:
+        image: postgres:14-alpine
+        env:
+          POSTGRES_USER: test_user
+          POSTGRES_PASSWORD: test_pass
+          POSTGRES_DB: test_db
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+    
+    - name: Cache pip packages
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ matrix.python-version }}-${{ hashFiles('requirements*.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-${{ matrix.python-version }}-
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install -r requirements-dev.txt
+    
+    - name: Set up test environment
+      env:
+        DATABASE_URL: postgresql://test_user:test_pass@localhost:5432/test_db
+        REDIS_URL: redis://localhost:6379/0
+        TESTING: "true"
+      run: |
+        # Create test config
+        cp config/orgs.example.json config/orgs.json
+        
+        # Initialize test database
+        python -c "from src.models.database import init_db; init_db()"
+    
+    - name: Run unit tests
+      env:
+        DATABASE_URL: postgresql://test_user:test_pass@localhost:5432/test_db
+        REDIS_URL: redis://localhost:6379/0
+        TESTING: "true"
+      run: |
+        pytest tests/unit/ -v --cov=src --cov-report=xml --cov-report=term
+    
+    - name: Run integration tests
+      env:
+        DATABASE_URL: postgresql://test_user:test_pass@localhost:5432/test_db
+        REDIS_URL: redis://localhost:6379/0
+        TESTING: "true"
+      run: |
+        pytest tests/integration/ -v -m integration
+    
+    - name: Upload coverage reports
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./coverage.xml
+        flags: unittests
+        name: codecov-umbrella
+    
+    - name: Generate test report
+      if: always()
+      run: |
+        pytest tests/ --junit-xml=test-results.xml
+    
+    - name: Upload test results
+      if: always()
+      uses: actions/upload-artifact@v3
+      with:
+        name: test-results-${{ matrix.python-version }}
+        path: test-results.xml
+
+  build:
+    name: Build Docker Image
+    needs: [lint, test]
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
     
     - name: Build Docker image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        push: false
+        tags: multi-crm-cross-sell:${{ github.sha }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+    
+    - name: Run Trivy vulnerability scanner
+      uses: aquasecurity/trivy-action@master
+      with:
+        image-ref: multi-crm-cross-sell:${{ github.sha }}
+        format: 'sarif'
+        output: 'trivy-results.sarif'
+    
+    - name: Upload Trivy scan results
+      uses: github/codeql-action/upload-sarif@v2
+      if: always()
+      with:
+        sarif_file: 'trivy-results.sarif'
+
+  deploy:
+    name: Deploy to Staging
+    needs: [build]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    environment: staging
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Deploy to staging
       run: |
-        docker build -t multi-crm-cross-sell:latest .
+        echo "Deploy to staging environment"
+        # Add your deployment commands here
+        # e.g., kubectl apply, helm upgrade, etc.
+
+  performance:
+    name: Performance Tests
+    needs: [test]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install locust
+    
+    - name: Run performance tests
+      run: |
+        # Start the API in background
+        python -m uvicorn src.api.main:app &
+        sleep 10
+        
+        # Run Locust tests
+        locust -f tests/performance/locustfile.py --headless -u 10 -r 2 -t 60s --html performance-report.html
+    
+    - name: Upload performance report
+      uses: actions/upload-artifact@v3
+      with:
+        name: performance-report
+        path: performance-report.html
+
+  docs:
+    name: Build Documentation
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install sphinx sphinx-rtd-theme
+    
+    - name: Build docs
+      run: |
+        cd docs
+        make html
+    
+    - name: Upload documentation
+      uses: actions/upload-artifact@v3
+      with:
+        name: documentation
+        path: docs/_build/html/
+
+  security-scan:
+    name: Security Scanning
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Run GitLeaks
+      uses: gitleaks/gitleaks-action@v2
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    
+    - name: Run CodeQL Analysis
+      uses: github/codeql-action/analyze@v2
+      with:
+        languages: python
