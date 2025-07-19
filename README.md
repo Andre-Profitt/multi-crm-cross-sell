@@ -37,7 +37,7 @@ An AI-powered platform that analyzes data from multiple Salesforce CRM instances
 
 ### 1. Clone the Repository
 ```bash
-git clone https://github.com/yourusername/multi-crm-cross-sell.git
+git clone https://github.com/Andre-Profitt/multi-crm-cross-sell.git
 cd multi-crm-cross-sell
 ```
 
@@ -87,9 +87,9 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 ## 👤 Author
 
-**Your Name**
-- LinkedIn: [your-linkedin](https://linkedin.com/in/your-profile)
-- GitHub: [@yourusername](https://github.com/yourusername)
+**Andre Profitt**
+- LinkedIn: [andre-profitt](https://linkedin.com/in/your-profile)
+- GitHub: [@Andre-Profitt](https://github.com/Andre-Profitt)
 
 ---
 
