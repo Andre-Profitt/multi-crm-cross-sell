@@ -14,8 +14,6 @@ import io
 import pandas as pd
 import jwt
 import os
-import secrets
-from pathlib import Path
 import logging
 from functools import lru_cache
 from sqlalchemy import select, and_, or_, func
@@ -54,28 +52,11 @@ app.add_middleware(
 security = HTTPBearer()
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/token")
 
-# JWT settings with secure defaults
-def get_jwt_secret():
-    """Get or generate JWT secret key"""
-    jwt_secret = os.getenv("JWT_SECRET_KEY")
-    
-    if not jwt_secret or jwt_secret == "your-secret-key-change-in-production":
-        secret_file = Path(".jwt_secret")
-        
-        if secret_file.exists():
-            jwt_secret = secret_file.read_text().strip()
-        else:
-            jwt_secret = secrets.token_urlsafe(32)
-            secret_file.write_text(jwt_secret)
-            logger.warning(
-                "Generated new JWT secret. Set JWT_SECRET_KEY env var in production!"
-            )
-    
-    return jwt_secret
-
-JWT_SECRET_KEY = get_jwt_secret()
+# JWT settings
+JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "your-secret-key-change-in-production")
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRATION_HOURS = 24
+
 # Global orchestrator instance
 orchestrator = None
 

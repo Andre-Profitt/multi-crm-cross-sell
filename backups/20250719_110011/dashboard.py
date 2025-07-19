@@ -179,6 +179,25 @@ fig_trend.update_layout(
 )
 st.plotly_chart(fig_trend, use_container_width=True)
 
+# Top Opportunities Table
+st.markdown("---")
+st.subheader("🏆 Top Cross-Sell Opportunities")
+
+# Create tabs for different views
+tab1, tab2, tab3 = st.tabs(["High Score", "High Value", "Recent"])
+
+with tab1:
+    top_by_score = filtered_df.nlargest(10, 'score')
+    display_opportunities(top_by_score)
+
+with tab2:
+    top_by_value = filtered_df.nlargest(10, 'estimated_value')
+    display_opportunities(top_by_value)
+
+with tab3:
+    recent = filtered_df.nlargest(10, 'created_at')
+    display_opportunities(recent)
+
 def display_opportunities(df):
     for _, opp in df.iterrows():
         st.markdown(
@@ -209,27 +228,6 @@ def display_opportunities(df):
             """,
             unsafe_allow_html=True
         )
-
-# Top Opportunities Table
-st.markdown("---")
-st.subheader("🏆 Top Cross-Sell Opportunities")
-
-# Create tabs for different views
-tab1, tab2, tab3 = st.tabs(["High Score", "High Value", "Recent"])
-
-with tab1:
-    top_by_score = filtered_df.nlargest(10, 'score')
-    display_opportunities(top_by_score)
-
-with tab2:
-    top_by_value = filtered_df.nlargest(10, 'estimated_value')
-    display_opportunities(top_by_value)
-
-with tab3:
-    recent = filtered_df.nlargest(10, 'created_at')
-    display_opportunities(recent)
-
-
 
 # Export Section
 st.markdown("---")
