@@ -88,6 +88,7 @@ python main.py --run-once
 ### 🌐 Access the Platform
 
 - **API Documentation**: http://localhost:8000/api/docs
+- **Postman Collection**: [docs/postman_collection.json](docs/postman_collection.json)
 - **Dashboard**: http://localhost:8501
 - **Health Check**: http://localhost:8000/api/health
 - **Flower (Celery monitoring)**: http://localhost:5555
@@ -169,6 +170,7 @@ Key environment variables (see `.env.example`):
 - `JWT_SECRET_KEY`: Secret key for API authentication
 
 ## 📚 Documentation
+- [Postman Collection](docs/postman_collection.json)
 
 - [API Reference](docs/api.md)
 - [Architecture Details](docs/architecture.md)
