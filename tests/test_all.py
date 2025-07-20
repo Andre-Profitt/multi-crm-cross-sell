@@ -14,6 +14,8 @@ import pandas as pd
 import pytest
 from httpx import AsyncClient
 
+from tests.utils import torch_available
+
 
 # Test fixtures
 @pytest.fixture
@@ -283,7 +285,6 @@ class TestMLPipeline:
 # ============= API Tests =============
 
 
-class TestAPI:
     """Tests for FastAPI endpoints"""
 
     @pytest.fixture
@@ -418,20 +419,7 @@ class TestIntegration:
             await orchestrator.initialize()
             await orchestrator.run_pipeline()
 
-            assert orchestrator.last_run_status["status"] == "success"
-
-
-# ============= Utility Functions =============
-
-
-def torch_available():
-    """Check if PyTorch is available"""
-    try:
-        import torch
-
-        return True
-    except ImportError:
-        return False
+        assert orchestrator.last_run_status["status"] == "success"
 
 
 # ============= Test Configuration =============
