@@ -15,6 +15,16 @@ import pytest
 from httpx import AsyncClient
 
 
+def torch_available():
+    """Check if PyTorch is available"""
+    try:
+        import torch  # noqa: F401
+
+        return True
+    except ImportError:
+        return False
+
+
 # Test fixtures
 @pytest.fixture
 def salesforce_config():
@@ -422,16 +432,6 @@ class TestIntegration:
 
 
 # ============= Utility Functions =============
-
-
-def torch_available():
-    """Check if PyTorch is available"""
-    try:
-        import torch
-
-        return True
-    except ImportError:
-        return False
 
 
 # ============= Test Configuration =============

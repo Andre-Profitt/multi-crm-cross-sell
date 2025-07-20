@@ -440,12 +440,12 @@ class CrossSellOrchestrator:
 
         # Generate 1000 synthetic samples
         n_samples = 1000
-        n_features = 6  # Match the feature engineering
+        n_features = 6 + self.feature_engineer.description_dim
 
         # Create synthetic features
         X = np.random.rand(n_samples, n_features)
 
-        # Create labels based on some logic
+        # Create labels based on some logic using the first six features
         y = []
         for features in X:
             score = (

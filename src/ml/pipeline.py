@@ -21,6 +21,8 @@ from sklearn.ensemble import GradientBoostingClassifier, RandomForestClassifier
 from sklearn.model_selection import cross_val_score, train_test_split
 from sklearn.preprocessing import LabelEncoder, StandardScaler
 
+from .nlp_features import DescriptionEmbedder
+
 logger = logging.getLogger(__name__)
 
 
@@ -61,6 +63,8 @@ class FeatureEngineering:
         self.scaler = StandardScaler()
         self.label_encoders = {}
         self.feature_names = []
+        self.embedder = DescriptionEmbedder()
+        self.description_dim = self.embedder.dim
 
     def create_account_features(self, accounts_df: pd.DataFrame) -> pd.DataFrame:
         """Create features from account data"""
@@ -101,6 +105,16 @@ class FeatureEngineering:
                 accounts_df["BillingCountry"].fillna("Unknown"), prefix="country"
             )
             features = pd.concat([features, country_dummies], axis=1)
+
+        # Description embeddings
+        if "Description" in accounts_df.columns:
+            desc_texts = accounts_df["Description"].fillna("").astype(str).tolist()
+            embeddings = self.embedder.encode_batch(desc_texts)
+        else:
+            embeddings = np.zeros((len(accounts_df), self.description_dim))
+
+        for i in range(self.description_dim):
+            features[f"desc_emb_{i}"] = embeddings[:, i]
 
         self.feature_names = features.columns.tolist()
         return features
