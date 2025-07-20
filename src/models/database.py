@@ -204,6 +204,19 @@ class SyncLog(Base):
     organization = relationship("Organization", back_populates="sync_logs")
 
 
+class User(Base):
+    """Application users for authentication"""
+
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    username = Column(String(100), unique=True, nullable=False)
+    password = Column(String(200), nullable=False)
+    role = Column(String(50), default="viewer")
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
 # Database initialization
 def init_db(database_url: str = None):
     """Initialize database with tables"""

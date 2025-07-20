@@ -37,11 +37,25 @@ class TestAuthentication:
     async def test_login_success(self):
         """Valid credentials should return a token"""
         transport = ASGITransport(app=app)
+        mock_session = AsyncMock()
+        user_obj = MagicMock()
+        user_obj.username = "admin"
+        user_obj.password = "password"
+        user_obj.role = "admin"
+        result = MagicMock()
+        result.scalar_one_or_none.return_value = user_obj
+        mock_session.execute = AsyncMock(return_value=result)
+
+        async def override_db():
+            yield mock_session
+
+        app.dependency_overrides[get_db] = override_db
         async with AsyncClient(transport=transport, base_url="http://test") as client:
             resp = await client.post(
                 "/api/auth/token",
                 json={"username": "admin", "password": "password"},
             )
+        app.dependency_overrides.clear()
 
         assert resp.status_code == 200
         data = resp.json()
@@ -56,11 +70,21 @@ class TestAuthentication:
     async def test_login_invalid(self):
         """Invalid credentials should return 401"""
         transport = ASGITransport(app=app)
+        mock_session = AsyncMock()
+        result = MagicMock()
+        result.scalar_one_or_none.return_value = None
+        mock_session.execute = AsyncMock(return_value=result)
+
+        async def override_db():
+            yield mock_session
+
+        app.dependency_overrides[get_db] = override_db
         async with AsyncClient(transport=transport, base_url="http://test") as client:
             resp = await client.post(
                 "/api/auth/token",
                 json={"username": "bad", "password": "wrong"},
             )
+        app.dependency_overrides.clear()
 
         assert resp.status_code == 401
         assert resp.json()["detail"] == "Incorrect username or password"
@@ -83,15 +107,20 @@ class TestAuthentication:
     @pytest.mark.asyncio
     async def test_protected_endpoint_with_token(self):
         """Valid token should allow access"""
-        token = create_access_token({"sub": "admin"})
+        token = create_access_token({"sub": "admin", "role": "admin"})
         headers = {"Authorization": f"Bearer {token}"}
 
         mock_session = AsyncMock()
-        mock_result = MagicMock()
+        user_obj = MagicMock()
+        user_obj.username = "admin"
+        user_obj.role = "admin"
+        result_user = MagicMock()
+        result_user.scalar_one_or_none.return_value = user_obj
+        result_recs = MagicMock()
         mock_scalars = MagicMock()
         mock_scalars.all.return_value = []
-        mock_result.scalars.return_value = mock_scalars
-        mock_session.execute = AsyncMock(return_value=mock_result)
+        result_recs.scalars.return_value = mock_scalars
+        mock_session.execute = AsyncMock(side_effect=[result_user, result_recs])
 
         transport = ASGITransport(app=app)
 
