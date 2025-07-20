@@ -227,20 +227,18 @@ class SalesforceConnector(BaseCRMConnector):
         )
 
         # Load private key for signing
-        async with aiofiles.open(self.config.private_key_path, "r") as f:
+        async with aiofiles.open(self.config.private_key_path, "rb") as f:
             private_key = await f.read()
 
+        # Build JWT assertion
         now = int(time.time())
-        assertion = jwt.encode(
-            {
-                "iss": self.config.client_id,
-                "sub": self.config.username,
-                "aud": login_url,
-                "exp": now + 300,
-            },
-            private_key,
-            algorithm="RS256",
-        )
+        payload = {
+            "iss": self.config.client_id,
+            "sub": self.config.username,
+            "aud": login_url,
+            "exp": now + 300,
+        }
+        assertion = jwt.encode(payload, private_key, algorithm="RS256")
 
         data = {
             "grant_type": "urn:ietf:params:oauth:grant-type:jwt-bearer",
@@ -253,22 +251,24 @@ class SalesforceConnector(BaseCRMConnector):
             response.raise_for_status()
             token_data = await response.json()
 
-            self.config.access_token = token_data["access_token"]
-            self.config.instance_url = token_data["instance_url"]
-            self.config.token_expiry = datetime.utcnow() + timedelta(hours=2)
+        self.config.access_token = token_data["access_token"]
+        self.config.instance_url = token_data["instance_url"]
+        self.config.token_expiry = datetime.utcnow() + timedelta(
+            seconds=int(token_data.get("expires_in", 7200))
+        )
 
-            await self.token_manager.save_token(
-                self.config.org_id,
-                {
-                    "access_token": self.config.access_token,
-                    "instance_url": self.config.instance_url,
-                    "expiry": self.config.token_expiry,
-                },
-            )
+        await self.token_manager.save_token(
+            self.config.org_id,
+            {
+                "access_token": self.config.access_token,
+                "instance_url": self.config.instance_url,
+                "expiry": self.config.token_expiry,
+            },
+        )
 
-            self._authenticated = True
-            logger.info(f"Successfully authenticated {self.config.org_name}")
-            return True
+        self._authenticated = True
+        logger.info(f"Successfully authenticated {self.config.org_name}")
+        return True
 
     async def test_connection(self) -> bool:
         """Test Salesforce connection"""
