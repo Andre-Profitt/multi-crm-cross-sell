@@ -57,6 +57,16 @@ def ml_config():
     return ModelConfig()
 
 
+def torch_available():
+    """Check if PyTorch is available"""
+    try:
+        import torch
+
+        return True
+    except ImportError:
+        return False
+
+
 # ============= Connector Tests =============
 
 
@@ -150,6 +160,60 @@ class TestSalesforceConnector:
             assert len(result) == 2
             assert "_org_id" in result.columns
             assert result["_org_id"].iloc[0] == "test_org"
+
+    @pytest.mark.asyncio
+    async def test_bulk_query_success(self, salesforce_config):
+        """Bulk query executes helper methods"""
+        from src.connectors.salesforce import SalesforceConfig, SalesforceConnector
+
+        config = SalesforceConfig(**salesforce_config)
+        connector = SalesforceConnector(config)
+        connector._authenticated = True
+        connector.config.access_token = "token"
+
+        df_res = pd.DataFrame({"Id": ["001"]})
+
+        with patch.multiple(
+            connector,
+            _create_bulk_job=AsyncMock(return_value="job1"),
+            _add_bulk_query=AsyncMock(),
+            _wait_for_bulk_job=AsyncMock(),
+            _get_bulk_results=AsyncMock(return_value=df_res),
+            _close_bulk_job=AsyncMock(),
+        ):
+            result = await connector._query_bulk("SELECT Id FROM Account", "Account")
+
+            assert isinstance(result, pd.DataFrame)
+            assert len(result) == 1
+            connector._create_bulk_job.assert_awaited_once_with("Account")
+            connector._add_bulk_query.assert_awaited_once_with("job1", "SELECT Id FROM Account")
+            connector._wait_for_bulk_job.assert_awaited_once_with("job1")
+            connector._get_bulk_results.assert_awaited_once_with("job1")
+            connector._close_bulk_job.assert_awaited_once_with("job1")
+
+    @pytest.mark.asyncio
+    async def test_bulk_query_error_cleanup(self, salesforce_config):
+        """Bulk query returns empty DataFrame when helpers fail"""
+        from src.connectors.salesforce import SalesforceConfig, SalesforceConnector
+
+        config = SalesforceConfig(**salesforce_config)
+        connector = SalesforceConnector(config)
+        connector._authenticated = True
+        connector.config.access_token = "token"
+
+        with patch.multiple(
+            connector,
+            _create_bulk_job=AsyncMock(return_value="job1"),
+            _add_bulk_query=AsyncMock(),
+            _wait_for_bulk_job=AsyncMock(),
+            _get_bulk_results=AsyncMock(side_effect=Exception("boom")),
+            _close_bulk_job=AsyncMock(),
+        ):
+            result = await connector._query_bulk("SELECT Id FROM Account", "Account")
+
+            assert isinstance(result, pd.DataFrame)
+            assert result.empty
+            connector._close_bulk_job.assert_awaited_once_with("job1")
 
 
 # ============= Orchestrator Tests =============
@@ -419,19 +483,6 @@ class TestIntegration:
             await orchestrator.run_pipeline()
 
             assert orchestrator.last_run_status["status"] == "success"
-
-
-# ============= Utility Functions =============
-
-
-def torch_available():
-    """Check if PyTorch is available"""
-    try:
-        import torch
-
-        return True
-    except ImportError:
-        return False
 
 
 # ============= Test Configuration =============

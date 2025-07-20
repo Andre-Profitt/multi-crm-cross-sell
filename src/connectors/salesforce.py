@@ -19,6 +19,7 @@ import aiohttp
 import backoff
 import jwt
 import pandas as pd
+from io import StringIO
 from cryptography.fernet import Fernet
 
 from .base import BaseCRMConnector, CRMConfig, register_connector
@@ -217,9 +218,56 @@ class SalesforceConnector(BaseCRMConnector):
     @backoff.on_exception(backoff.expo, aiohttp.ClientError, max_tries=3)
     async def _auth_jwt(self) -> bool:
         """JWT Bearer flow authentication"""
-        # Implementation for JWT auth
-        # This would use the private key to sign a JWT assertion
-        raise NotImplementedError("JWT auth to be implemented")
+        if not self._session:
+            self._session = aiohttp.ClientSession()
+
+        login_url = (
+            "https://test.salesforce.com"
+            if self.config.sandbox
+            else "https://login.salesforce.com"
+        )
+        token_url = f"{login_url}/services/oauth2/token"
+
+        # Load private key
+        async with aiofiles.open(self.config.private_key_path, "r") as f:
+            private_key = await f.read()
+
+        # Build JWT assertion
+        now = int(time.time())
+        payload = {
+            "iss": self.config.client_id,
+            "sub": self.config.username,
+            "aud": login_url,
+            "exp": now + 300,
+        }
+        assertion = jwt.encode(payload, private_key, algorithm="RS256")
+
+        data = {
+            "grant_type": "urn:ietf:params:oauth:grant-type:jwt-bearer",
+            "assertion": assertion,
+        }
+
+        async with self._session.post(token_url, data=data) as response:
+            response.raise_for_status()
+            token_data = await response.json()
+
+            self.config.access_token = token_data["access_token"]
+            self.config.instance_url = token_data["instance_url"]
+            expires_in = int(token_data.get("expires_in", 7200))
+            self.config.token_expiry = datetime.utcnow() + timedelta(seconds=expires_in)
+
+            await self.token_manager.save_token(
+                self.config.org_id,
+                {
+                    "access_token": self.config.access_token,
+                    "instance_url": self.config.instance_url,
+                    "expiry": self.config.token_expiry,
+                },
+            )
+
+            self._authenticated = True
+            logger.info(f"Successfully authenticated {self.config.org_name}")
+            return True
 
     async def test_connection(self) -> bool:
         """Test Salesforce connection"""
@@ -307,7 +355,9 @@ class SalesforceConnector(BaseCRMConnector):
 
             # Get results
             return await self._get_bulk_results(job_id)
-
+        except Exception as e:
+            logger.error(f"Bulk query failed for {self.config.org_name}: {e}")
+            return pd.DataFrame()
         finally:
             # Clean up job
             await self._close_bulk_job(job_id)
@@ -328,6 +378,60 @@ class SalesforceConnector(BaseCRMConnector):
                 response.raise_for_status()
                 result = await response.json()
                 return result["id"]
+
+    async def _add_bulk_query(self, job_id: str, soql: str) -> None:
+        """Add SOQL query to an existing bulk job"""
+        url = (
+            f"{self.config.instance_url}/services/data/{self.config.api_version}/jobs/query/{job_id}"
+        )
+
+        async with self._get_session() as session:
+            async with session.patch(
+                url, json={"query": soql}, headers=self._get_headers()
+            ) as response:
+                response.raise_for_status()
+
+    async def _wait_for_bulk_job(self, job_id: str, poll_interval: int = 5) -> None:
+        """Wait for bulk job completion"""
+        url = (
+            f"{self.config.instance_url}/services/data/{self.config.api_version}/jobs/query/{job_id}"
+        )
+        async with self._get_session() as session:
+            while True:
+                async with session.get(url, headers=self._get_headers()) as response:
+                    response.raise_for_status()
+                    info = await response.json()
+                    state = info.get("state")
+                    if state == "JobComplete":
+                        return
+                    if state in {"Aborted", "Failed"}:
+                        raise RuntimeError(f"Bulk job {job_id} {state}")
+                await asyncio.sleep(poll_interval)
+
+    async def _get_bulk_results(self, job_id: str) -> pd.DataFrame:
+        """Retrieve bulk job results as DataFrame"""
+        url = (
+            f"{self.config.instance_url}/services/data/{self.config.api_version}/jobs/query/{job_id}/results"
+        )
+        async with self._get_session() as session:
+            async with session.get(url, headers=self._get_headers()) as response:
+                response.raise_for_status()
+                csv_text = await response.text()
+
+        df = pd.read_csv(StringIO(csv_text))
+        return self._add_metadata(df)
+
+    async def _close_bulk_job(self, job_id: str) -> None:
+        """Close bulk job"""
+        url = (
+            f"{self.config.instance_url}/services/data/{self.config.api_version}/jobs/query/{job_id}"
+        )
+        async with self._get_session() as session:
+            async with session.patch(
+                url, json={"state": "Closed"}, headers=self._get_headers()
+            ) as response:
+                if response.status not in {200, 201, 204}:
+                    logger.warning(f"Failed to close bulk job {job_id}: {response.status}")
 
     async def extract_accounts(
         self, filters: Optional[Dict[str, Any]] = None, limit: Optional[int] = None
