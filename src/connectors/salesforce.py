@@ -217,9 +217,58 @@ class SalesforceConnector(BaseCRMConnector):
     @backoff.on_exception(backoff.expo, aiohttp.ClientError, max_tries=3)
     async def _auth_jwt(self) -> bool:
         """JWT Bearer flow authentication"""
-        # Implementation for JWT auth
-        # This would use the private key to sign a JWT assertion
-        raise NotImplementedError("JWT auth to be implemented")
+        if not self._session:
+            self._session = aiohttp.ClientSession()
+
+        login_url = (
+            "https://test.salesforce.com"
+            if self.config.sandbox
+            else "https://login.salesforce.com"
+        )
+
+        # Load private key for signing
+        async with aiofiles.open(self.config.private_key_path, "r") as f:
+            private_key = await f.read()
+
+        now = int(time.time())
+        assertion = jwt.encode(
+            {
+                "iss": self.config.client_id,
+                "sub": self.config.username,
+                "aud": login_url,
+                "exp": now + 300,
+            },
+            private_key,
+            algorithm="RS256",
+        )
+
+        data = {
+            "grant_type": "urn:ietf:params:oauth:grant-type:jwt-bearer",
+            "assertion": assertion,
+        }
+
+        async with self._session.post(
+            f"{login_url}/services/oauth2/token", data=data
+        ) as response:
+            response.raise_for_status()
+            token_data = await response.json()
+
+            self.config.access_token = token_data["access_token"]
+            self.config.instance_url = token_data["instance_url"]
+            self.config.token_expiry = datetime.utcnow() + timedelta(hours=2)
+
+            await self.token_manager.save_token(
+                self.config.org_id,
+                {
+                    "access_token": self.config.access_token,
+                    "instance_url": self.config.instance_url,
+                    "expiry": self.config.token_expiry,
+                },
+            )
+
+            self._authenticated = True
+            logger.info(f"Successfully authenticated {self.config.org_name}")
+            return True
 
     async def test_connection(self) -> bool:
         """Test Salesforce connection"""

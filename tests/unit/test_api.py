@@ -15,7 +15,27 @@ class TestHealthEndpoints:
 
 
 class TestAuthentication:
-    def test_login(self):
-        """Test login endpoint"""
-        # Test will be implemented
-        pass
+    @pytest.mark.asyncio
+    async def test_login_success(self):
+        """Valid credentials should return a token"""
+        async with AsyncClient(app=app, base_url="http://test") as client:
+            resp = await client.post(
+                "/api/auth/token",
+                json={"username": "admin", "password": "password"},
+            )
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "access_token" in data
+        assert data["token_type"] == "bearer"
+
+    @pytest.mark.asyncio
+    async def test_login_invalid(self):
+        """Invalid credentials should return 401"""
+        async with AsyncClient(app=app, base_url="http://test") as client:
+            resp = await client.post(
+                "/api/auth/token",
+                json={"username": "bad", "password": "wrong"},
+            )
+
+        assert resp.status_code == 401
