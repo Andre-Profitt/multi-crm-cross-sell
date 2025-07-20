@@ -9,6 +9,13 @@ import os
 import secrets
 from datetime import datetime, timedelta
 from functools import lru_cache
+
+import yaml
+from fastapi_cache import FastAPICache
+from fastapi_cache.backends.inmemory import InMemoryBackend
+from fastapi_cache.backends.redis import RedisBackend
+from fastapi_cache.decorator import cache
+import redis.asyncio as redis
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
@@ -82,6 +89,25 @@ JWT_ALGORITHM = "HS256"
 JWT_EXPIRATION_HOURS = 24
 # Global orchestrator instance
 orchestrator = None
+
+
+def get_cache_ttl() -> int:
+    """Determine cache TTL from env or config"""
+    env_ttl = os.getenv("API_CACHE_TTL")
+    if env_ttl:
+        try:
+            return int(env_ttl)
+        except ValueError:
+            logger.warning("Invalid API_CACHE_TTL env var, using default")
+    try:
+        with open("config/ml_config.yaml", "r") as f:
+            config = yaml.safe_load(f)
+        return int(config.get("api", {}).get("cache_ttl_seconds", 60))
+    except Exception:
+        return 60
+
+
+CACHE_TTL_SECONDS = get_cache_ttl()
 
 
 # Pydantic models
@@ -222,6 +248,13 @@ async def startup_event():
     global orchestrator
     orchestrator = CrossSellOrchestrator()
     await orchestrator.initialize()
+    cache_backend = os.getenv("CACHE_BACKEND", "inmemory").lower()
+    cache_url = os.getenv("CACHE_URL", "redis://localhost:6379/0")
+    if cache_backend == "redis":
+        redis_client = redis.from_url(cache_url, encoding="utf8", decode_responses=True)
+        FastAPICache.init(RedisBackend(redis_client), prefix="fastapi-cache")
+    else:
+        FastAPICache.init(InMemoryBackend(), prefix="fastapi-cache")
     logger.info("API started successfully")
 
 
@@ -290,6 +323,7 @@ async def login(credentials: UserCredentials):
 
 # Recommendation endpoints
 @app.get("/api/recommendations", response_model=List[OpportunityScore], tags=["Recommendations"])
+@cache(expire=CACHE_TTL_SECONDS)
 async def get_recommendations(
     filter: OpportunityFilter = Depends(),
     db: AsyncSession = Depends(get_db),

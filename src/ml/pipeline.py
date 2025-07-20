@@ -41,6 +41,7 @@ class ModelConfig:
 
     # Ensemble weights
     ensemble_weights: Dict[str, float] = None
+    api_cache_ttl: int = 60
 
     def __post_init__(self):
         if self.nn_hidden_layers is None:

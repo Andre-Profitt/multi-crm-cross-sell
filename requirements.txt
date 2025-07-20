@@ -26,6 +26,7 @@ pyarrow==12.0.1
 
 # API Framework
 fastapi==0.103.1
+fastapi-cache2==0.2.1
 uvicorn[standard]==0.23.2
 pydantic==2.4.2
 python-multipart==0.0.6
