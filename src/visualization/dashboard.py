@@ -1,10 +1,13 @@
-"""
-Streamlit Dashboard for Cross-Sell Opportunity Intelligence
-Run with: streamlit run src/visualization/dashboard.py
+"""Streamlit Dashboard for Cross-Sell Opportunity Intelligence.
+
+This dashboard surfaces cross-sell opportunities across multiple Salesforce
+organizations. It includes interactive filtering and data exploration tools.
+Run with: ``streamlit run src/visualization/dashboard.py``.
 """
 
 import os
 from datetime import datetime, timedelta
+import math
 
 import numpy as np
 import pandas as pd
@@ -47,30 +50,34 @@ def get_db_connection():
 
 
 # Load data
-@st.cache_data(ttl=300)  # Cache for 5 minutes
-def load_recommendations():
+@st.cache_data(ttl=300)
+def load_recommendations(start_date: datetime, end_date: datetime) -> pd.DataFrame:
+    """Load recommendations within the provided date range."""
+
     engine = get_db_connection()
     query = """
     SELECT * FROM recommendations
-    WHERE created_at >= NOW() - INTERVAL '30 days'
+    WHERE created_at >= %(start)s AND created_at <= %(end)s
     ORDER BY score DESC
     """
-    return pd.read_sql(query, engine)
+    return pd.read_sql(query, engine, params={"start": start_date, "end": end_date})
 
 
 @st.cache_data(ttl=300)
-def load_time_series():
+def load_time_series(start_date: datetime, end_date: datetime) -> pd.DataFrame:
+    """Load aggregated time series metrics within the date range."""
+
     engine = get_db_connection()
     query = """
     SELECT DATE(created_at) as date,
            COUNT(*) as count,
            SUM(estimated_value) as value
     FROM recommendations
-    WHERE created_at >= NOW() - INTERVAL '30 days'
+    WHERE created_at >= %(start)s AND created_at <= %(end)s
     GROUP BY DATE(created_at)
     ORDER BY date
     """
-    return pd.read_sql(query, engine)
+    return pd.read_sql(query, engine, params={"start": start_date, "end": end_date})
 
 
 # Title and description
@@ -78,21 +85,41 @@ st.title("🎯 Cross-Sell Intelligence Platform")
 st.markdown("**AI-Powered Revenue Opportunities Across Your Portfolio**")
 
 # Sidebar for filters
+"""Sidebar section for selecting score thresholds, date range and organizations."""
+
 st.sidebar.header("Filters")
 min_score = st.sidebar.slider("Minimum Opportunity Score", 0.0, 1.0, 0.5)
 selected_confidence = st.sidebar.multiselect(
     "Confidence Levels", ["Very High", "High", "Medium", "Low"], default=["Very High", "High"]
 )
 
+date_range = st.sidebar.date_input(
+    "Date Range",
+    value=(datetime.now() - timedelta(days=30), datetime.now()),
+)
+start_date = datetime.combine(date_range[0], datetime.min.time())
+end_date = datetime.combine(date_range[1], datetime.max.time())
+
 # Load data
-recommendations_df = load_recommendations()
-time_series_df = load_time_series()
+recommendations_df = load_recommendations(start_date, end_date)
+time_series_df = load_time_series(start_date, end_date)
+
+all_orgs = sorted(
+    set(recommendations_df["account1_org"]).union(set(recommendations_df["account2_org"]))
+)
+selected_orgs = st.sidebar.multiselect("Organizations", all_orgs, default=all_orgs)
 
 # Apply filters
 filtered_df = recommendations_df[
     (recommendations_df["score"] >= min_score)
     & (recommendations_df["confidence_level"].isin(selected_confidence))
+    & (
+        (recommendations_df["account1_org"].isin(selected_orgs))
+        | (recommendations_df["account2_org"].isin(selected_orgs))
+    )
 ]
+
+"""Key metrics summarizing the filtered opportunity set."""
 
 # Key Metrics
 col1, col2, col3, col4 = st.columns(4)
@@ -131,6 +158,8 @@ with col4:
     conversion_rate = 0.24  # Example metric
     st.metric("Conversion Rate", f"{conversion_rate:.1%}", "Based on historical data")
     st.markdown("</div>", unsafe_allow_html=True)
+
+"""Visual charts for exploring opportunity distributions and trends."""
 
 # Charts Section
 st.markdown("---")
@@ -178,7 +207,9 @@ fig_trend.update_layout(
 st.plotly_chart(fig_trend, use_container_width=True)
 
 
-def display_opportunities(df):
+def display_opportunities(df: pd.DataFrame) -> None:
+    """Render a list of opportunity cards."""
+
     for _, opp in df.iterrows():
         st.markdown(
             f"""
@@ -210,6 +241,33 @@ def display_opportunities(df):
         )
 
 
+def display_paginated_opportunities(df: pd.DataFrame, sort_by: str, key_prefix: str) -> None:
+    """Display opportunities sorted by a column with pagination."""
+
+    page_size = 5
+    sorted_df = df.sort_values(by=sort_by, ascending=False).reset_index(drop=True)
+    total_pages = math.ceil(len(sorted_df) / page_size)
+    page_key = f"{key_prefix}_page"
+    if page_key not in st.session_state:
+        st.session_state[page_key] = 0
+
+    start = st.session_state[page_key] * page_size
+    end = start + page_size
+    display_opportunities(sorted_df.iloc[start:end])
+
+    col_prev, col_next = st.columns(2)
+    with col_prev:
+        if st.button("Previous", key=f"{key_prefix}_prev") and st.session_state[page_key] > 0:
+            st.session_state[page_key] -= 1
+    with col_next:
+        if st.button("Next", key=f"{key_prefix}_next") and end < len(sorted_df):
+            st.session_state[page_key] += 1
+
+    st.caption(f"Page {st.session_state[page_key] + 1} of {total_pages}")
+
+
+"""Paginated lists of opportunities sorted by score, value and recency."""
+
 # Top Opportunities Table
 st.markdown("---")
 st.subheader("🏆 Top Cross-Sell Opportunities")
@@ -218,17 +276,16 @@ st.subheader("🏆 Top Cross-Sell Opportunities")
 tab1, tab2, tab3 = st.tabs(["High Score", "High Value", "Recent"])
 
 with tab1:
-    top_by_score = filtered_df.nlargest(10, "score")
-    display_opportunities(top_by_score)
+    display_paginated_opportunities(filtered_df, "score", "score")
 
 with tab2:
-    top_by_value = filtered_df.nlargest(10, "estimated_value")
-    display_opportunities(top_by_value)
+    display_paginated_opportunities(filtered_df, "estimated_value", "value")
 
 with tab3:
-    recent = filtered_df.nlargest(10, "created_at")
-    display_opportunities(recent)
+    display_paginated_opportunities(filtered_df, "created_at", "recent")
 
+
+"""Export tools for downloading data and refreshing the dashboard."""
 
 # Export Section
 st.markdown("---")
@@ -247,6 +304,8 @@ with col2:
     if st.button("🔄 Refresh Data"):
         st.cache_data.clear()
         st.experimental_rerun()
+
+"""Informational footer with timestamp."""
 
 # Footer
 st.markdown("---")
