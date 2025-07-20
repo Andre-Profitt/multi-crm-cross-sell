@@ -1,0 +1,19 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cross-sell-app
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: cross-sell
+  template:
+    metadata:
+      labels:
+        app: cross-sell
+    spec:
+      containers:
+        - name: app
+          image: ghcr.io/andre-profitt/multi-crm-cross-sell:latest
+          ports:
+            - containerPort: 8000

@@ -92,6 +92,12 @@ python main.py --run-once
 - **Health Check**: http://localhost:8000/api/health
 - **Flower (Celery monitoring)**: http://localhost:5555
 
+## ⚓ Deployment
+
+Example Kubernetes manifests are available in [k8s/](k8s/).
+See [docs/deployment.md](docs/deployment.md) for steps to apply them and install Prometheus and Grafana.
+
+
 ## 🧪 Running Tests
 
 ```bash
@@ -173,7 +179,7 @@ Key environment variables (see `.env.example`):
 - [API Reference](docs/api.md)
 - [Architecture Details](docs/architecture.md)
 - [Development Guide](docs/development.md)
-- [Deployment Guide](docs/deployment.md)
+- [Deployment Guide (k8s manifests)](docs/deployment.md)
 
 ## 🤝 Contributing
 

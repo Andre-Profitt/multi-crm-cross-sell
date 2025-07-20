@@ -1,0 +1,5 @@
+# values.yaml for grafana/grafana chart
+adminUser: admin
+adminPassword: grafana
+service:
+  type: ClusterIP
