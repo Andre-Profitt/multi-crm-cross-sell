@@ -11,7 +11,7 @@ An AI-powered platform that analyzes data from multiple Salesforce CRM instances
 
 - **Multi-Salesforce Integration**: Connect and sync data from multiple Salesforce orgs
 - **AI-Powered Recommendations**: Machine learning models identify high-value cross-sell opportunities
-- **Real-time Dashboard**: Interactive Streamlit dashboard for opportunity visualization
+- **Real-time Dashboard**: Interactive Streamlit dashboard with date-range and organization filters plus paginated opportunity lists
 - **REST API**: Programmatic access to recommendations and insights
 - **Automated Pipeline**: Scheduled data extraction and model retraining
 - **Enterprise Ready**: Kubernetes deployment, monitoring, and security
