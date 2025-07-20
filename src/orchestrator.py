@@ -15,6 +15,7 @@ import pandas as pd
 import yaml
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
 
@@ -342,11 +343,48 @@ class CrossSellOrchestrator:
             logger.info(f"Model trained successfully with metrics: {metrics}")
 
     async def _generate_training_data(self):
-        """Generate training data from historical data"""
-        # This would pull from your labeled historical data
-        # For now, returning None to skip training
-        # Generate synthetic data for now
-        return self._generate_synthetic_training_data()
+        """Generate training data from accounts and opportunities."""
+        logger.info("Generating training data from database")
+
+        async with self.session_maker() as session:
+            accounts_result = await session.execute(select(Account))
+            accounts = accounts_result.scalars().all()
+
+            opp_result = await session.execute(select(Opportunity))
+            opportunities = opp_result.scalars().all()
+
+        if not accounts:
+            logger.warning("No account data found, falling back to synthetic data")
+            return self._generate_synthetic_training_data()
+
+        accounts_df = pd.DataFrame(
+            [
+                {
+                    "Id": acc.id,
+                    "Industry": acc.industry,
+                    "AnnualRevenue": acc.annual_revenue,
+                    "NumberOfEmployees": acc.number_of_employees,
+                    "BillingCountry": acc.billing_country,
+                    "CreatedDate": acc.created_date,
+                    "LastActivityDate": acc.last_activity_date,
+                }
+                for acc in accounts
+            ]
+        )
+
+        won_map = {}
+        for opp in opportunities:
+            if opp.account_id not in won_map:
+                won_map[opp.account_id] = False
+            if opp.is_won:
+                won_map[opp.account_id] = True
+
+        accounts_df["label"] = accounts_df["Id"].map(lambda aid: 1 if won_map.get(aid) else 0)
+
+        features = self.feature_engineer.create_account_features(accounts_df)
+        X = features.values
+        y = accounts_df["label"].values
+        return X, y
 
     async def _generate_recommendations(self, processed_data: Dict[str, Any]) -> pd.DataFrame:
         """Generate cross-sell recommendations"""

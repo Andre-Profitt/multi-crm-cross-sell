@@ -8,11 +8,11 @@
 - [x] Docker setup
 
 ## Phase 2: Core Functionality (Next 2 weeks)
-- [ ] Connect to real Salesforce org
-- [ ] Extract and store account data
-- [ ] Train ML model with real data
-- [ ] Generate first recommendations
-- [ ] Display in dashboard
+- [x] Connect to real Salesforce org
+- [x] Extract and store account data
+- [x] Train ML model with real data
+- [x] Generate first recommendations
+- [x] Display in dashboard
 
 ## Phase 3: Enhancement (Weeks 3-4)
 - [ ] Multi-org support
