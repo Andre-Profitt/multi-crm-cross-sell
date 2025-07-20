@@ -47,7 +47,12 @@ cd multi-crm-cross-sell
 chmod +x setup.sh
 ./setup.sh
 
-# Activate virtual environment
+# Create your environment file
+cp .env.example .env
+# Edit .env and fill in the values described in .env.example
+nano .env
+
+# Activate virtual environment (optional for Docker usage)
 source venv/bin/activate
 ```
 
@@ -62,11 +67,8 @@ nano config/orgs.json
 
 ### 4. Start Services
 ```bash
-# Start with Docker Compose
-docker-compose up -d
-
-# Or run locally
-python main.py --run-once
+# Build and start all services using Docker Compose
+docker-compose up --build -d
 ```
 
 ### 5. Access the Platform
