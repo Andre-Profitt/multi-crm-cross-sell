@@ -69,3 +69,7 @@ training:
   test_size: 0.2
   random_state: 42
   cross_validation_folds: 5
+
+# API configuration
+api:
+  cache_ttl_seconds: 60

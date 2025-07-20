@@ -95,6 +95,7 @@ class CrossSellOrchestrator:
                 nn_batch_size=config_dict["neural_network"]["training"]["batch_size"],
                 nn_epochs=config_dict["neural_network"]["training"]["epochs"],
                 ensemble_weights=config_dict["ensemble"]["weights"],
+                api_cache_ttl=config_dict.get("api", {}).get("cache_ttl_seconds", 60),
             )
         except Exception as e:
             logger.warning(f"Could not load ML config: {e}, using defaults")
