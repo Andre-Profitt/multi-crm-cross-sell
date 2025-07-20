@@ -281,19 +281,21 @@ class TestMLPipeline:
         assert output.shape == (5, 1)
         assert all(0 <= v <= 1 for v in output.numpy().flatten())
 
-
-# ============= API Tests =============
-
+    # ============= API Tests =============
 
     """Tests for FastAPI endpoints"""
 
     @pytest.fixture
     async def client(self):
         """Create test client"""
+        import os
+
+        os.environ["API_RATE_LIMIT"] = "2/minute"
         from src.api.main import app
 
         async with AsyncClient(app=app, base_url="http://test") as client:
             yield client
+        os.environ.pop("API_RATE_LIMIT", None)
 
     @pytest.fixture
     def auth_headers(self):
@@ -371,6 +373,25 @@ class TestMLPipeline:
             assert "score" in data
             assert 0 <= data["score"] <= 1
             assert "confidence_level" in data
+
+    @pytest.mark.asyncio
+    async def test_rate_limit_enforced(self, client, auth_headers):
+        """Requests beyond limit should return 429"""
+        for _ in range(2):
+            response = await client.get("/api/recommendations", headers=auth_headers)
+            assert response.status_code in (200, 429)
+        # Third request exceeds 2/minute limit
+        response = await client.get("/api/recommendations", headers=auth_headers)
+        assert response.status_code == 429
+
+    @pytest.mark.asyncio
+    async def test_health_exempt_from_rate_limit(self, client):
+        """Health endpoints are not rate limited"""
+        for _ in range(5):
+            r1 = await client.get("/")
+            r2 = await client.get("/api/health")
+            assert r1.status_code == 200
+            assert r2.status_code == 200
 
 
 # ============= Integration Tests =============

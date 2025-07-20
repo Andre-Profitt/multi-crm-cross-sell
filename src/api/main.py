@@ -15,9 +15,11 @@ from typing import Any, Dict, List, Optional, Union
 import aiofiles
 import jwt
 import pandas as pd
-from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Query, status
+from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Query, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer, OAuth2PasswordBearer
 from pydantic import BaseModel, Field, validator
 from sqlalchemy import and_, func, or_, select
@@ -53,6 +55,24 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Rate limiting
+API_RATE_LIMIT = os.getenv("API_RATE_LIMIT", "100/minute")
+
+
+def get_identifier(request: Request) -> str:
+    """Return token if provided, otherwise client IP."""
+    auth = request.headers.get("Authorization")
+    if auth and auth.startswith("Bearer "):
+        return auth.split(" ", 1)[1]
+    if request.client:
+        return request.client.host
+    return "anonymous"
+
+
+limiter = Limiter(key_func=get_identifier, default_limits=[API_RATE_LIMIT])
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # Security
 security = HTTPBearer()
@@ -235,6 +255,7 @@ async def shutdown_event():
 
 # Health check endpoints
 @app.get("/", tags=["Health"])
+@limiter.exempt
 async def root():
     """Health check endpoint"""
     return {
@@ -246,6 +267,7 @@ async def root():
 
 
 @app.get("/api/health", tags=["Health"])
+@limiter.exempt
 async def health_check(db: AsyncSession = Depends(get_db)):
     """Detailed health check"""
     try:
@@ -481,9 +503,9 @@ async def score_opportunity(request: ScoringRequest, user: Dict = Depends(verify
             confidence_level=confidence,
             recommendation_type="Industry Expansion",
             estimated_value=100000 * score_value,
-            next_best_action="Schedule introduction call"
-            if score_value > 0.7
-            else "Add to nurture campaign",
+            next_best_action=(
+                "Schedule introduction call" if score_value > 0.7 else "Add to nurture campaign"
+            ),
         )
 
         if request.include_explanation and individual_scores:

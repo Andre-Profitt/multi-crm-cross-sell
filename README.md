@@ -168,6 +168,14 @@ Key environment variables (see `.env.example`):
 - `SALESFORCE_CLIENT_ID`: Your Salesforce app client ID
 - `SALESFORCE_CLIENT_SECRET`: Your Salesforce app secret
 - `JWT_SECRET_KEY`: Secret key for API authentication
+- `API_RATE_LIMIT`: Requests per IP/token (e.g. "100/minute")
+
+### Rate Limiting
+
+The API uses [SlowAPI](https://github.com/laurentS/slowapi) to throttle requests.
+Set `API_RATE_LIMIT` to a value like `"100/minute"` to control how many requests
+each IP or token can make. The root (`/`) and `/api/health` endpoints are
+exempt from this limit.
 
 ## 📚 Documentation
 - [Postman Collection](docs/postman_collection.json)
