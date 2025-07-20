@@ -1,0 +1,16 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: cross-sell-ingress
+spec:
+  rules:
+    - host: cross-sell.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: cross-sell-service
+                port:
+                  number: 80

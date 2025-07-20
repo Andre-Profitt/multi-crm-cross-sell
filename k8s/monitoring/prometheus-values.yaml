@@ -1,0 +1,6 @@
+# values.yaml for prometheus-community/kube-prometheus-stack
+prometheus:
+  service:
+    type: ClusterIP
+  prometheusSpec:
+    serviceMonitorSelectorNilUsesHelmValues: false
