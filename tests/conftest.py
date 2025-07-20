@@ -1,3 +1,5 @@
+"""Test configuration and lightweight stubs for optional dependencies."""
+
 import asyncio
 import os
 import sys
@@ -48,6 +50,8 @@ if "torch" not in sys.modules:
     torch_stub.optim.Adam = _Adam
 
     def no_grad():
+        """Context manager stub used in place of torch.no_grad."""
+
         class _Ctx:
             def __enter__(self):
                 return None
@@ -61,6 +65,11 @@ if "torch" not in sys.modules:
     sys.modules["torch"] = torch_stub
     sys.modules["torch.nn"] = torch_stub.nn
     sys.modules["torch.optim"] = torch_stub.optim
+
+# Stub out heavy optional dependencies to avoid installation in CI
+for missing_pkg in ["shap", "xgboost"]:
+    if missing_pkg not in sys.modules:
+        sys.modules[missing_pkg] = types.ModuleType(missing_pkg)
 
 
 @pytest.fixture(scope="session")
