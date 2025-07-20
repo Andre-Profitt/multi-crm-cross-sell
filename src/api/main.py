@@ -27,6 +27,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models.database import (
     Account,
+    User,
     CrossSellRecommendation,
     ModelMetadata,
     Organization,
@@ -114,6 +115,23 @@ class TokenData(BaseModel):
 class UserCredentials(BaseModel):
     username: str
     password: str
+
+
+class UserCreate(BaseModel):
+    username: str
+    password: str
+    role: Optional[str] = "viewer"
+
+
+class UserOut(BaseModel):
+    id: int
+    username: str
+    role: str
+
+
+class UserUpdate(BaseModel):
+    password: Optional[str] = None
+    role: Optional[str] = None
 
 
 class OpportunityScore(BaseModel):
@@ -210,7 +228,16 @@ def create_access_token(data: dict) -> str:
     return encoded_jwt
 
 
-def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)) -> Dict[str, Any]:
+async def get_db() -> AsyncSession:
+    """Get async database session"""
+    async with orchestrator.session_maker() as session:
+        yield session
+
+
+async def verify_token(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    db: AsyncSession = Depends(get_db),
+) -> Dict[str, Any]:
     """Verify JWT token and return payload"""
     token = credentials.credentials
     try:
@@ -221,18 +248,19 @@ def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)) 
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid authentication credentials",
             )
-        return payload
+        # Ensure user still exists
+        result = await db.execute(select(User).where(User.username == username))
+        user_obj = result.scalar_one_or_none()
+        if not user_obj:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid authentication credentials",
+            )
+        return {"sub": user_obj.username, "role": user_obj.role}
     except jwt.ExpiredSignatureError:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token expired")
     except jwt.InvalidTokenError:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
-
-
-# Dependency to get database session
-async def get_db() -> AsyncSession:
-    """Get async database session"""
-    async with orchestrator.session_maker() as session:
-        yield session
 
 
 # Startup and shutdown events
@@ -295,19 +323,104 @@ async def health_check(db: AsyncSession = Depends(get_db)):
 
 # Authentication endpoints
 @app.post("/api/auth/token", response_model=TokenData, tags=["Authentication"])
-async def login(credentials: UserCredentials):
+async def login(credentials: UserCredentials, db: AsyncSession = Depends(get_db)):
     """Authenticate user and return JWT token"""
-    # In production, verify against database or external auth service
-    # This is a simplified version
-    if credentials.username == "admin" and credentials.password == "password":
-        access_token = create_access_token(
-            data={"sub": credentials.username, "scopes": ["read", "write"]}
-        )
-        return TokenData(access_token=access_token, expires_in=JWT_EXPIRATION_HOURS * 3600)
-    else:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="Incorrect username or password"
-        )
+    result = await db.execute(select(User).where(User.username == credentials.username))
+    user_obj = result.scalar_one_or_none()
+
+    if not user_obj or user_obj.password != credentials.password:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Incorrect username or password")
+
+    access_token = create_access_token({"sub": user_obj.username, "role": user_obj.role})
+    return TokenData(access_token=access_token, expires_in=JWT_EXPIRATION_HOURS * 3600)
+
+
+# User management endpoints
+@app.post("/api/users", response_model=UserOut, tags=["Users"])
+async def create_user(
+    user: UserCreate,
+    db: AsyncSession = Depends(get_db),
+    current: Dict = Depends(verify_token),
+):
+    if current.get("role") != "admin":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions")
+
+    new_user = User(username=user.username, password=user.password, role=user.role)
+    db.add(new_user)
+    await db.commit()
+    await db.refresh(new_user)
+    return UserOut(id=new_user.id, username=new_user.username, role=new_user.role)
+
+
+@app.get("/api/users", response_model=List[UserOut], tags=["Users"])
+async def list_users(
+    db: AsyncSession = Depends(get_db),
+    current: Dict = Depends(verify_token),
+):
+    if current.get("role") != "admin":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions")
+    result = await db.execute(select(User))
+    users = result.scalars().all()
+    return [UserOut(id=u.id, username=u.username, role=u.role) for u in users]
+
+
+@app.get("/api/users/{user_id}", response_model=UserOut, tags=["Users"])
+async def get_user(
+    user_id: int,
+    db: AsyncSession = Depends(get_db),
+    current: Dict = Depends(verify_token),
+):
+    if current.get("role") != "admin":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions")
+    result = await db.execute(select(User).where(User.id == user_id))
+    user_obj = result.scalar_one_or_none()
+    if not user_obj:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    return UserOut(id=user_obj.id, username=user_obj.username, role=user_obj.role)
+
+
+@app.patch("/api/users/{user_id}", response_model=UserOut, tags=["Users"])
+async def update_user(
+    user_id: int,
+    updates: UserUpdate,
+    db: AsyncSession = Depends(get_db),
+    current: Dict = Depends(verify_token),
+):
+    if current.get("role") != "admin":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions")
+
+    result = await db.execute(select(User).where(User.id == user_id))
+    user_obj = result.scalar_one_or_none()
+    if not user_obj:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    if updates.password is not None:
+        user_obj.password = updates.password
+    if updates.role is not None:
+        user_obj.role = updates.role
+
+    await db.commit()
+    await db.refresh(user_obj)
+    return UserOut(id=user_obj.id, username=user_obj.username, role=user_obj.role)
+
+
+@app.delete("/api/users/{user_id}", tags=["Users"])
+async def delete_user(
+    user_id: int,
+    db: AsyncSession = Depends(get_db),
+    current: Dict = Depends(verify_token),
+):
+    if current.get("role") != "admin":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions")
+
+    result = await db.execute(select(User).where(User.id == user_id))
+    user_obj = result.scalar_one_or_none()
+    if not user_obj:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    await db.delete(user_obj)
+    await db.commit()
+    return {"message": "User deleted"}
 
 
 # Recommendation endpoints
@@ -775,7 +888,7 @@ async def trigger_pipeline_run(
 ):
     """Manually trigger a pipeline run"""
     # Check user has write permissions
-    if "write" not in user.get("scopes", []):
+    if user.get("role") != "admin":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions"
         )
