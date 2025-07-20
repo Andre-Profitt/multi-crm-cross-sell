@@ -104,6 +104,12 @@ docker-compose exec app pytest --cov=src --cov-report=html
 
 # Run specific test category
 docker-compose exec app pytest tests/unit/
+
+# Integration tests
+docker-compose exec app pytest tests/integration
+
+# Performance tests
+docker-compose exec app pytest tests/performance
 ```
 
 ## 🛑 Stopping & Cleanup
