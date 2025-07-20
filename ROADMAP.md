@@ -37,7 +37,7 @@
 ## Quick Wins for This Week:
 1. **Add Sample Data** - Create scripts to generate test data
 2. **Improve Dashboard** - Add more visualizations
-3. **API Testing** - Add Postman collection
+3. **API Testing** - Use docs/postman_collection.json
 4. **ML Pipeline** - Test with synthetic data
 5. **Documentation** - Add API examples
 

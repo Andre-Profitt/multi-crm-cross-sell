@@ -1,0 +1,93 @@
+{
+  "info": {
+    "name": "Cross-Sell API Collection",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "base_url", "value": "http://localhost:8000" },
+    { "key": "token", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "Get Auth Token",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"username\": \"admin\",\n  \"password\": \"password\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/auth/token",
+          "host": ["{{base_url}}"],
+          "path": ["api", "auth", "token"]
+        }
+      }
+    },
+    {
+      "name": "Health Check",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{base_url}}/api/health",
+          "host": ["{{base_url}}"],
+          "path": ["api", "health"]
+        }
+      }
+    },
+    {
+      "name": "Trigger Pipeline",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{token}}" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/pipeline/run",
+          "host": ["{{base_url}}"],
+          "path": ["api", "pipeline", "run"]
+        }
+      }
+    },
+    {
+      "name": "Get Recommendations",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{token}}" }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/recommendations?min_score=0.7&limit=10",
+          "host": ["{{base_url}}"],
+          "path": ["api", "recommendations"],
+          "query": [
+            { "key": "min_score", "value": "0.7" },
+            { "key": "limit", "value": "10" }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Score Opportunity",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{token}}" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"account1\": {\n    \"Name\": \"Company A\",\n    \"Industry\": \"Tech\"\n  },\n  \"account2\": {\n    \"Name\": \"Company B\",\n    \"Industry\": \"Finance\"\n  },\n  \"include_explanation\": true\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/score",
+          "host": ["{{base_url}}"],
+          "path": ["api", "score"]
+        }
+      }
+    }
+  ]
+}
