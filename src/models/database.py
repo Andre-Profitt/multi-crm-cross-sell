@@ -64,6 +64,9 @@ class Account(Base):
     last_activity_date = Column(DateTime)
     last_modified_date = Column(DateTime)
 
+    # NLP summary of contacts and notes
+    summary = Column(Text)
+
     # Metadata
     synced_at = Column(DateTime, default=datetime.utcnow)
 

@@ -174,6 +174,11 @@ class OpportunityUpdate(BaseModel):
     notes: Optional[str] = None
 
 
+class AccountSummaryOut(BaseModel):
+    account_id: str
+    summary: Optional[str] = None
+
+
 class ScoringRequest(BaseModel):
     account1: Dict[str, Any]
     account2: Dict[str, Any]
@@ -770,6 +775,20 @@ async def get_insights(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to generate insights"
         )
+
+
+@app.get("/api/accounts/{account_id}/summary", response_model=AccountSummaryOut, tags=["Accounts"])
+async def get_account_summary(
+    account_id: str,
+    db: AsyncSession = Depends(get_db),
+    user: Dict = Depends(verify_token),
+):
+    """Retrieve stored NLP summary for an account."""
+    result = await db.execute(select(Account).where(Account.id == account_id))
+    account = result.scalar_one_or_none()
+    if not account:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Account not found")
+    return AccountSummaryOut(account_id=account_id, summary=account.summary)
 
 
 @app.get("/api/export/{format}", tags=["Export"])

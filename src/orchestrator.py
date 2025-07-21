@@ -27,6 +27,7 @@ from src.ml.pipeline import (
     FeatureEngineering,
     ModelConfig,
 )
+from src.ml.summarizer import summarize_account
 from src.models.database import (
     Account,
     CrossSellRecommendation,
@@ -254,8 +255,38 @@ class CrossSellOrchestrator:
         """Save extracted data to database"""
         async with self.session_maker() as session:
             # Save accounts
+            contacts_df = data.get("contacts", pd.DataFrame())
+
             if "accounts" in data and not data["accounts"].empty:
                 for _, account in data["accounts"].iterrows():
+                    acct_contacts = (
+                        contacts_df[contacts_df["AccountId"] == account["Id"]]
+                        if (not contacts_df.empty and "AccountId" in contacts_df)
+                        else pd.DataFrame()
+                    )
+                    contact_text = (
+                        " ".join(
+                            acct_contacts.apply(
+                                lambda r: " ".join(
+                                    [
+                                        str(r.get("FirstName", "")),
+                                        str(r.get("LastName", "")),
+                                        str(r.get("Title", "")),
+                                        str(r.get("Department", "")),
+                                    ]
+                                ),
+                                axis=1,
+                            ).tolist()
+                        )
+                        if not acct_contacts.empty
+                        else ""
+                    )
+
+                    notes = account.get("Description", "")
+
+                    summary_input = f"{notes} {contact_text}".strip()
+                    summary = await summarize_account(summary_input) if summary_input else None
+
                     db_account = Account(
                         id=f"{org_id}_{account['Id']}",
                         salesforce_id=account["Id"],
@@ -273,6 +304,7 @@ class CrossSellOrchestrator:
                         created_date=pd.to_datetime(account.get("CreatedDate")),
                         last_activity_date=pd.to_datetime(account.get("LastActivityDate")),
                         last_modified_date=pd.to_datetime(account.get("LastModifiedDate")),
+                        summary=summary,
                     )
                     session.add(db_account)
 

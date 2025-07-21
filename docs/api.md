@@ -166,7 +166,24 @@ curl -X GET "http://localhost:8000/api/insights?days_back=30" \
 }
 ```
 
-### 5. Export Data
+### 5. Get Account Summary
+
+Retrieve the NLP-generated summary for a specific account.
+
+```bash
+curl -X GET "http://localhost:8000/api/accounts/ORG_ID_ACCOUNT_ID/summary" \
+  -H "Authorization: Bearer $API_TOKEN"
+```
+
+**Response**:
+```json
+{
+  "account_id": "ORG_ID_ACCOUNT_ID",
+  "summary": "Key contacts include ..."
+}
+```
+
+### 6. Export Data
 
 Export recommendations in various formats.
 
