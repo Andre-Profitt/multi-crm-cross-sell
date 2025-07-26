@@ -331,15 +331,60 @@ class CrossSellOrchestrator:
             await session.commit()
 
     async def _process_data(self, org_data: Dict[str, Dict]) -> Dict[str, Any]:
-        """Process extracted data for ML pipeline"""
-        processed = {"org_data": org_data, "feature_matrix": None, "labels": None}
+        """Clean and normalize data for the ML pipeline."""
 
-        # Additional processing logic here
-        # - Standardize industries
-        # - Calculate derived features
-        # - Handle missing values
+        def _normalize_industry(val: Any) -> str:
+            mapping = {
+                "tech": "Technology",
+                "technology": "Technology",
+                "software": "Technology",
+                "it": "Technology",
+                "financial services": "Finance",
+                "finance": "Finance",
+            }
+            if val is None or pd.isna(val):
+                return "Unknown"
+            val = str(val).strip().lower()
+            return mapping.get(val, val.title())
 
-        return processed
+        def _normalize_country(val: Any) -> str:
+            mapping = {
+                "us": "USA",
+                "usa": "USA",
+                "united states": "USA",
+                "united states of america": "USA",
+                "uk": "UK",
+                "united kingdom": "UK",
+            }
+            if val is None or pd.isna(val):
+                return "UNKNOWN"
+            val = str(val).strip().lower()
+            return mapping.get(val, val.upper())
+
+        cleaned_orgs: Dict[str, Dict] = {}
+        feature_frames: List[pd.DataFrame] = []
+
+        for org_id, data in org_data.items():
+            accounts = data.get("accounts", pd.DataFrame()).copy()
+            if not accounts.empty:
+                accounts["Industry"] = accounts["Industry"].apply(_normalize_industry)
+                accounts["BillingCountry"] = accounts["BillingCountry"].apply(_normalize_country)
+                accounts["AnnualRevenue"] = accounts["AnnualRevenue"].fillna(0)
+                accounts["NumberOfEmployees"] = accounts["NumberOfEmployees"].fillna(0)
+                accounts = accounts.drop_duplicates(subset="Id")
+
+                features = self.feature_engineer.create_account_features(accounts)
+                features["org_id"] = org_id
+                features["account_id"] = accounts["Id"].values
+                feature_frames.append(features)
+
+            cleaned_orgs[org_id] = {**data, "accounts": accounts}
+
+        feature_matrix = (
+            pd.concat(feature_frames, ignore_index=True) if feature_frames else pd.DataFrame()
+        )
+
+        return {"org_data": cleaned_orgs, "feature_matrix": feature_matrix, "labels": None}
 
     async def _train_model(self, processed_data: Dict[str, Any]):
         """Train or update the ML model"""
