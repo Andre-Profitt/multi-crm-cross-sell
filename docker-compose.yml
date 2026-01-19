@@ -11,23 +11,70 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U crosssell_user -d crosssell_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
   redis:
     image: redis:7-alpine
     ports:
       - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
   app:
     build: .
     depends_on:
-      - postgres
-      - redis
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     environment:
       - DATABASE_URL=postgresql://crosssell_user:secure_password@postgres:5432/crosssell_db
       - REDIS_URL=redis://redis:6379/0
+      - DEMO_MODE=true
     volumes:
       - ./config:/app/config
       - ./outputs:/app/outputs
+      - ./models:/app/models
+
+  api:
+    build: .
+    command: uvicorn src.api.main:app --host 0.0.0.0 --port 8000
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      - DATABASE_URL=postgresql://crosssell_user:secure_password@postgres:5432/crosssell_db
+      - REDIS_URL=redis://redis:6379/0
+      - DEMO_MODE=true
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  dashboard:
+    build: .
+    command: streamlit run src/visualization/dashboard.py --server.port 8501 --server.address 0.0.0.0
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      - DATABASE_URL=postgresql://crosssell_user:secure_password@postgres:5432/crosssell_db
+      - DEMO_MODE=true
+    ports:
+      - "8501:8501"
 
 volumes:
   postgres_data:

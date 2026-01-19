@@ -63,3 +63,10 @@ k8s/secret*.yaml
 test-results.xml
 coverage.xml
 .coverage.*
+
+# Backups
+backups/
+
+# Outputs
+outputs/
+reports/

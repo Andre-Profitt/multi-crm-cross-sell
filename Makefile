@@ -1,7 +1,7 @@
 # Makefile for Cross-Sell Intelligence Platform
 # Provides common development tasks
 
-.PHONY: help install test lint format clean docker-build docker-up docker-down
+.PHONY: help install test lint format clean docker-build docker-up docker-down demo evaluate
 
 # Default target
 help:
@@ -9,6 +9,15 @@ help:
 	@echo "========================================="
 	@echo ""
 	@echo "Available commands:"
+	@echo ""
+	@echo "  DEMO (try me first!):"
+	@echo "  make demo         Start full demo environment (API + Dashboard + DB)"
+	@echo "  make demo-stop    Stop demo environment"
+	@echo ""
+	@echo "  EVALUATION:"
+	@echo "  make evaluate     Run ML model evaluation with ranking metrics"
+	@echo ""
+	@echo "  DEVELOPMENT:"
 	@echo "  make install      Install dependencies"
 	@echo "  make test         Run all tests"
 	@echo "  make test-unit    Run unit tests only"
@@ -18,9 +27,13 @@ help:
 	@echo "  make type-check   Run type checking with mypy"
 	@echo "  make coverage     Run tests with coverage"
 	@echo "  make clean        Clean up temporary files"
+	@echo ""
+	@echo "  DOCKER:"
 	@echo "  make docker-build Build Docker image"
 	@echo "  make docker-up    Start services with docker-compose"
 	@echo "  make docker-down  Stop docker-compose services"
+	@echo ""
+	@echo "  RUN:"
 	@echo "  make run          Run the application"
 	@echo "  make run-api      Run the API server"
 	@echo "  make docs         Generate API documentation"
@@ -151,3 +164,43 @@ release-minor:
 
 release-major:
 	bump2version major
+
+# Demo mode - full stack with sample data
+demo:
+	@echo "Starting Cross-Sell Intelligence Demo..."
+	@echo "========================================="
+	docker-compose up -d --build postgres redis
+	@echo "Waiting for database to be ready..."
+	@sleep 5
+	docker-compose up -d --build api dashboard
+	@echo "Initializing database schema..."
+	docker-compose exec -T api python -c "from src.models.database import init_db; init_db()"
+	@echo "Generating sample data..."
+	docker-compose exec -T api python scripts/generate_sample_data.py
+	@echo "Training ML model on sample data..."
+	docker-compose exec -T api python scripts/train_model.py
+	@echo ""
+	@echo "Demo environment ready!"
+	@echo "======================"
+	@echo "  Dashboard:  http://localhost:8501"
+	@echo "  API Docs:   http://localhost:8000/api/docs"
+	@echo "  Health:     http://localhost:8000/api/health"
+	@echo ""
+	@echo "Run 'make demo-stop' to shut down"
+
+demo-stop:
+	docker-compose down
+	@echo "Demo environment stopped"
+
+demo-clean:
+	docker-compose down -v
+	@echo "Demo environment stopped and volumes removed"
+
+# ML Evaluation
+evaluate:
+	@echo "Running ML model evaluation..."
+	$(PYTHON) scripts/evaluate.py
+
+evaluate-full:
+	@echo "Running comprehensive ML evaluation with cross-validation..."
+	$(PYTHON) scripts/evaluate.py --full --output reports/evaluation_report.json
