@@ -220,6 +220,103 @@ class User(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
+class PredictionLog(Base):
+    """Log of all ML predictions for debugging and analysis"""
+
+    __tablename__ = "prediction_logs"
+
+    id = Column(String(50), primary_key=True)
+    model_version = Column(String(50), nullable=False, index=True)
+    model_stage = Column(String(20), default="production")
+
+    # Accounts
+    account1_id = Column(String(100), nullable=False, index=True)
+    account2_id = Column(String(100), nullable=False, index=True)
+
+    # Prediction
+    score = Column(Float, nullable=False)
+    confidence = Column(Float)
+    rank = Column(Integer)
+
+    # Context
+    features = Column(JSON)
+    explanation = Column(Text)
+
+    # Request metadata
+    session_id = Column(String(100), index=True)
+    user_id = Column(String(100), index=True)
+    request_id = Column(String(100))
+    latency_ms = Column(Float)
+
+    # Timestamps
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+
+
+class FeedbackLog(Base):
+    """User feedback on recommendations"""
+
+    __tablename__ = "feedback_logs"
+
+    id = Column(String(50), primary_key=True)
+    prediction_id = Column(String(50), nullable=False, index=True)
+    feedback_type = Column(String(20), nullable=False, index=True)
+
+    # User context
+    user_id = Column(String(100), index=True)
+
+    # Outcome
+    outcome_value = Column(Float)
+    outcome_date = Column(DateTime)
+
+    # Additional context
+    metadata = Column(JSON)
+
+    # Timestamps
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+
+
+class ModelRegistry(Base):
+    """Model version registry with A/B testing support"""
+
+    __tablename__ = "model_registry"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    version = Column(String(50), unique=True, nullable=False)
+    stage = Column(String(20), default="development")
+
+    # Model info
+    model_type = Column(String(50))
+    description = Column(Text)
+
+    # Artifacts
+    artifact_path = Column(String(500))
+    artifact_hash = Column(String(64))
+
+    # Training metadata
+    training_data_version = Column(String(50))
+    training_samples = Column(Integer)
+    training_started_at = Column(DateTime)
+    training_completed_at = Column(DateTime)
+
+    # Offline metrics
+    offline_auc = Column(Float)
+    offline_precision_at_10 = Column(Float)
+    offline_ndcg_at_10 = Column(Float)
+
+    # Online metrics
+    online_ctr = Column(Float)
+    online_conversion_rate = Column(Float)
+    online_revenue_lift = Column(Float)
+
+    # Traffic allocation
+    traffic_percentage = Column(Float, default=0)
+
+    # Timestamps
+    created_at = Column(DateTime, default=datetime.utcnow)
+    promoted_at = Column(DateTime)
+    retired_at = Column(DateTime)
+
+
 # Database initialization
 def init_db(database_url: str = None):
     """Initialize database with tables"""
