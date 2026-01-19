@@ -7,9 +7,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Copy project files for dependency installation
+COPY pyproject.toml README.md ./
+COPY src/ ./src/
 
+# Install dependencies from pyproject.toml
+RUN pip install --no-cache-dir -e .
+
+# Copy remaining files
 COPY . .
 
 RUN mkdir -p logs outputs models data config
